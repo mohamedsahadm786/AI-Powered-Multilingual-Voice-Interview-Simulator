@@ -1,179 +1,345 @@
-# AI-Powered-Multilingual-Voice-Interview-Simulator
+# 🎙️ AI Audio Interview Coach
 
-
-# AI Interview Coach — Local Setup & Usage
-
-## Table of Contents
-- Overview
-- Features
-- Requirements
-  - 1) Python & OS
-  - 2) Python Packages
-  - 3) External Tools
-  - 4) Environment Variables / PATH
-  - 5) API Keys
-- Project Files Expected
-- Optional: MFA Alignment for Pause Metrics
-- How to Run
-- Troubleshooting
-- Security Note
-- Sample requirements.txt
+An end-to-end **audio interview training** tool that:
+- Generates **context-aware questions** (uses your Job Title, Job Description, Résumé, Experience Level).
+- Lets you **answer by voice** (Malayalam / English / Kannada).
+- **Cleans & enhances audio** (noise reduction → WPE dereverb → band-pass → LUFS normalization → *(optional)* deep speech enhancement).
+- **Detects language** (Whisper) and **transcribes** with OpenAI (preserves filler words, hesitations, `...` pauses).
+- **Translates** non-English answers to English for comparable feedback.
+- **Analyzes delivery** (WPM, filler ratio, long pauses via MFA alignment) and provides **AI feedback** by comparing to a model answer.
+- Supports **Live mode** (continuous Q&A) and **Recorded mode** (retry takes and keep the best).
 
 ---
 
-## Overview
-An interactive, voice-based interview trainer that:
-- asks context-aware questions (based on job title, job description, and resume),
-- records spoken answers (Malayalam / English / Kannada),
-- cleans/enhances audio (noise reduction, dereverb, band-pass, loudness),
-- transcribes with OpenAI and optionally translates to English,
-- analyzes speech (WPM, fillers, pauses via MFA),
-- optionally compares an answer to a model answer for feedback.
+## 📚 Table of Contents
+- [Overview](#-overview)
+- [Features](#-features)
+- [Requirements](#-requirements)
+  - [1) Python & OS](#1-python--os)
+  - [2) Python Packages](#2-python-packages)
+  - [3) External Tools](#3-external-tools)
+  - [4) Environment Variables / PATH](#4-environment-variables--path)
+  - [5) API Keys](#5-api-keys)
+- [Download the Code](#-download-the-code)
+- [Local Setup (Step-by-Step)](#-local-setup-step-by-step)
+- [How to Run](#-how-to-run)
+- [Config You May Need to Edit](#-config-you-may-need-to-edit)
+- [Outputs](#-outputs)
+- [Optional: MFA Alignment](#-optional-mfa-alignment)
+- [Troubleshooting](#-troubleshooting)
+- [Security Note](#-security-note)
+- [Sample requirements.txt](#-sample-requirementstxt)
+
 
 ---
 
-## Features
-- **Languages:** en, ml, kn (Whisper language detection + GPT verification)
-- **Audio pipeline:** noisereduce → **WPE dereverb** (nara-wpe) → band-pass (≈300–3400 Hz) → **loudness normalization** → *(optional)* DL enhancement (Torch model)
-- **Transcription:** gpt-4o-transcribe (primary) with gpt-4o-mini-transcribe (fallback for language check)
-- **TTS (optional):** pyttsx3 to read questions / model answers
-- **Resume parsing:** PyMuPDF (fitz)
-- **Pause/Filler analysis:** custom filler lists for en/ml/kn + **(optional)** Montreal Forced Aligner (MFA) JSON
+## 🔎 Overview
+This project implements a **single-notebook pipeline** that simulates realistic interview sessions. It asks **increasingly challenging** questions tailored to your context, records answers from your **microphone**, runs a **robust audio preprocessing chain**, performs **language detection + exact transcription** (preserving fillers & pauses), optionally **translates** to English, and computes **speaking-delivery metrics** (WPM, filler ratio, pause structure). It then provides **structured AI feedback** by comparing your answer to a generated **reference answer**.
 
 ---
 
-## Requirements
+## ✨ Features
+- **Languages:** `en`, `ml`, `kn`  
+  (Whisper for language ID + GPT verification fallback)
+- **Audio pipeline:** `noisereduce` → **WPE dereverb** (`nara_wpe`) → **band-pass** (≈300–3400 Hz) → **loudness normalization** (≈ −23 LUFS) → *(optional)* **DL enhancement** (Torch model via `hyperpyyaml`)
+- **Transcription:** `gpt-4o-transcribe` (preserves fillers & pauses)
+- **Translation:** `deep-translator` (Malayalam/Kannada → English)
+- **TTS (optional):** `pyttsx3` can read questions/model answers aloud
+- **Résumé parsing:** `PyMuPDF (fitz)` reads PDF and injects context
+- **Analytics:** speaking rate (WPM), filler ratio/count, pause counts/durations (via **MFA JSON**)
+- **Modes:** **Live** (continuous Q&A) and **Recorded** (re-record per question)
+- **Persistence:** session history saved to `history.json`
+
+---
+
+## ✅ Requirements
 
 ### 1) Python & OS
-- **Python:** 3.9–3.11 recommended  
+- **Python:** 3.9 – 3.11 recommended  
 - **OS:** Windows / macOS / Linux  
-- **Microphone access:** Required (sounddevice / PortAudio)  
-- **GPU (optional):** for faster Whisper/Torch; install CUDA-enabled PyTorch if available.
+- **Microphone:** required (`sounddevice` / PortAudio)  
+- **GPU (optional):** for Torch/Whisper speedups (install CUDA-matching wheels)
 
 ### 2) Python Packages
-Create and activate a virtual environment, then install:
-    pip install --upgrade pip
-    pip install openai-whisper openai sounddevice numpy scipy pyttsx3 librosa pydub PyMuPDF deep-translator soundfile noisereduce pyloudnorm nara-wpe torch torchaudio hyperpyyaml ipython
+Create a virtual environment and install dependencies:
 
-Notes:
-- openai-whisper is used for language detection and basic ASR utilities.
-- torch / torchaudio wheels should match OS/Python (and CUDA if using a GPU).
-- pyttsx3 uses system TTS (SAPI5 on Windows, NSSpeechSynthesizer on macOS, eSpeak on Linux).
+```bash
+# Create and activate (choose one)
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# Upgrade pip
+pip install -U pip
+
+# PyTorch/torchaudio (CPU baseline; see https://pytorch.org for CUDA builds)
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Core packages
+pip install -U \
+  openai-whisper openai sounddevice scipy numpy pyttsx3 librosa pydub \
+  pymupdf deep-translator soundfile noisereduce pyloudnorm nara_wpe \
+  torchaudio hyperpyyaml ipython
+```
+
+### Notes
+ - `openai-whisper` requires FFmpeg on PATH.
+ - `pyttsx3` uses OS TTS backends (Windows=SAPI5, macOS=NSSpeech, Linux=eSpeak).
+ - `nara_wpe` provides dereverberation (WPE).
+ - If using GPU, install `torch/torchaudio` per your CUDA version from the official site.
+
 
 ### 3) External Tools
-- **FFmpeg** — required by pydub/librosa. Install and ensure the ffmpeg/bin directory is on PATH.
-- **Montreal Forced Aligner (MFA)** *(optional; for pause/phone-level metrics)* — install MFA + an English acoustic model & dictionary. Ensure the MFA executable folder is on PATH.
+- **FFmpeg** — required by Whisper/PyDub/Librosa
+   - Windows: download FFmpeg and add `...\ffmpeg\bin` to PATH
+   - macOS: `brew install ffmpeg`
+   - Linux (Debian/Ubuntu): `sudo apt-get install -y ffmpeg`
+- **PortAudio** — backend for sounddevice
+   - macOS: `brew install portaudio`
+   - Linux: `sudo apt-get install -y portaudio19-dev`
+-  **Montréal Forced Aligner (MFA)** — for robust pause/phone timings
+Install MFA and acoustic model(s); ensure mfa is on PATH
+
 
 ### 4) Environment Variables / PATH
-Windows (PowerShell) examples (adjust paths as needed):
-    # Matplotlib backend for headless usage
-    setx MPLBACKEND "Agg"
 
-    # Montreal Forced Aligner (optional)
-    setx MFA_ROOT_DIR "C:\Tools\MFA"
-    setx PATH "C:\Tools\MFA\Library\bin;%PATH%"
+**macOS / Linux (bash/zsh):**
+```bash
+# Recommended: headless plotting backend
+export MPLBACKEND="Agg"
 
-    # FFmpeg
-    setx PATH "C:\Tools\ffmpeg\bin;%PATH%"
+# OpenAI key (see section 5)
+export OPENAI_API_KEY="sk-..."
 
-Optional – DL speech enhancement model directory:
-    C:/models/speech_enhance
-This folder should contain the model/config expected by the enhancement loader (path is configurable in the code).
+# FFmpeg
+export PATH="/usr/local/bin:$PATH"           # if brew installed ffmpeg
+# or if you extracted ffmpeg to a custom dir, add its 'bin':
+export PATH="$HOME/tools/ffmpeg/bin:$PATH"
+
+# (Optional) MFA
+export MFA_ROOT_DIR="$HOME/.local/share/mfa"
+export PATH="$HOME/miniconda3/envs/mfa/bin:$PATH"   # adjust to your install
+```
+
+**Windows (PowerShell):**
+```bash
+# Headless plotting backend
+setx MPLBACKEND "Agg"
+
+# OpenAI key (see section 5)
+setx OPENAI_API_KEY "sk-..."
+
+# FFmpeg (example path)
+setx PATH "C:\tools\ffmpeg\bin;%PATH%"
+
+# (Optional) MFA (examples; adjust to your install)
+setx MFA_ROOT_DIR "C:\Users\<you>\Documents\MFA"
+setx PATH "C:\code_projects\MFA\Library\bin;%PATH%"
+# If using a specific exe path in code, ensure it exists (see config section)
+
+```
+The notebook includes Windows-style PATH samples such as:
+
+`C:\code_projects\MFA\Library\bin`
+`C:\code_projects\ffmpeg_release_full\ffmpeg-7.1.1-full_build\bin`
+Update these for your machine or prefer adding `mfa/ffmpeg` to PATH globally.
 
 ### 5) API Keys
-- **OpenAI** — required for transcription, Q&A, and feedback.
 
-macOS / Linux:
-    export OPENAI_API_KEY="sk-..."
+**OpenAI** — required for transcription, Q&A and feedback.
 
-Windows (PowerShell):
-    setx OPENAI_API_KEY "sk-..."
+**macOS / Linux:**
+`export OPENAI_API_KEY="sk-..."`
 
-Models used in code (configure as needed):
-- gpt-4o (question generation, answer comparison, language verification)
-- gpt-4o-transcribe (main transcription)
-- gpt-4o-mini-transcribe (fallback language check)
+**Windows (PowerShell):**
+setx OPENAI_API_KEY "sk-..."
 
----
+**In code, prefer:**
+```bash
+from openai import OpenAI
+client = OpenAI()  # reads OPENAI_API_KEY from env
+```
 
-## Project Files Expected
-- **Main notebook/script:** og-Copy4.ipynb (or an exported script).  
-  To export and run as a script:
-      jupyter nbconvert --to script og-Copy4.ipynb
-      python og-Copy4.py
-
-- **History files:**  history.json (auto-created in the working directory)
-- **Temp audio:** temp_cleaned.wav, voice_after_cleaning.wav, and recordings like answer_basic_try1.wav (auto-created)
+(The notebook originally uses `OpenAI(api_key="YOUR_GPT_API_KEY")`; you can replace that with the snippet above.)
 
 ---
+### ⬇️ Download the Code
 
-## Optional: MFA Alignment for Pause Metrics
+Clone this repo or download the ZIP:
+
+```bash
+# Using git
+git clone https://github.com/<your-account>/<your-repo>.git
+cd <your-repo>
+
+# OR download ZIP from GitHub and extract it
+```
+Main file: A `udio_Interview.ipynb` (the end-to-end pipeline).
+
+
+## 🛠 Local Setup (Step-by-Step)
+1 - Install Python 3.9–3.11 and Git.
+
+2 - Clone the repository (or extract ZIP).
+
+3 - Create and activate a virtual environment (see Python Packages).
+
+4 - Install required Python packages.
+
+5 - Install FFmpeg and ensure ffmpeg is on PATH (ffmpeg -version should work).
+
+6 - (Optional) Install MFA and a suitable acoustic model.
+
+7 - Set OPENAI_API_KEY in your environment.
+
+8 - (Windows only) If you will use the notebook’s hard-coded MFA path, ensure the exe exists (or change the code to call mfa directly).
+
+9 - Run Jupyter or export the notebook to a script (see next section).
+
+---
+### ▶️ How to Run
+**Option A — Run in Jupyter**
+```bash
+# From the repo folder
+jupyter lab     # or: jupyter notebook
+```
+Open `Audio_Interview.ipynb`, run cells top-to-bottom, then execute the final entry cell to start the interactive prompts.
+
+During a session you’ll be asked for:
+ - Job Title (required)
+ - Job Description (optional)
+ - Upload Résumé? (yes/no → provide PDF path; text parsed via PyMuPDF)
+ - Experience Level: Fresher / Fresher with Internship / Work Experience
+ - Interview Type: choose a predefined type (Behavioral/Technical/etc.) or enter a custom one
+ - Mode: live or recorded
+ - Language: ml, en, or kn
+
+**Option B — Export to Script and Run**
+```bash
+jupyter nbconvert --to script Audio_Interview.ipynb
+python Audio_Interview_converted.py
+```
+Follow the same CLI prompts as in Jupyter.
+
+---
+### ⚙️ Config You May Need to Edit
+ - OpenAI client: Prefer client = OpenAI() (reads env var) instead of hardcoding.
+ - Whisper model for LID: default is "small"; you can switch to "base"/"medium" per speed/accuracy needs.
+ - MFA executable path (Windows example): the notebook invokes a path like C:\code_projects\MFA\Scripts\mfa.exe.
+ - If mfa is on PATH globally, change the code to call "mfa" instead of a hard-coded path.
+ - Acoustic model identifiers: code selects by language (e.g., "english_mfa" and "tamil_cv").
+ - Ensure those names match models installed in your MFA. Otherwise, update the identifiers in code.
+ - Deep speech enhancement model directory: default example is:
+
+```
+C:/code_projects/RP2/pretrained_models/enhance
+```
+This directory should include `hyperparams.yaml` and `enhance_model.ckpt`.
+Update preprocess_audio_pipeline(voice_file, model_dir="...") to your folder or temporarily disable enhancement by commenting out the enhancement step and using the cleaned intermediate file.
+
+---
+### 📤 Outputs
+ - Temp audio: response.wav, temp_cleaned.wav, voice_after_cleaning.wav, and per-question recordings (e.g., answer_2_try1.wav)
+ - Session history: history.json — contains asked questions and your answers (and can be extended with metrics)
+ - Console/UI:
+Reference model answer (optional)
+Structured comparison feedback (optional)
+Voice analytics (WPM, filler ratio, pause stats) (requires MFA for pauses)
+
+---
+### ⏱ Optional: MFA Alignment
+```bash
+# 1. Create and activate a Conda environment
+conda create -n mfa_env python=3.10 -y
+conda activate mfa_env
+
+# 2. Install MFA from conda-forge
+conda install -c conda-forge montreal-forced-aligner -y
+
+# 3. Verify installation
+mfa version
+
+# 4. Download example pre-trained models
+mfa model download acoustic english
+mfa model download dictionary english_us_arpa
+```
+
 To compute accurate pause counts/durations and word timings:
-1. Align answer audio with its transcript using MFA.  
-2. Export alignment to JSON (or convert TextGrid → JSON).  
-3. Configure the code to read this JSON (the parser expects tiers.phones.entries and tiers.words.entries).
+
+ 1 - Install MFA and download an appropriate acoustic model & dictionary (e.g., English; for Dravidian languages choose a close model or adjust).
+ 
+ 2 - Ensure the MFA executable is callable (either on PATH or via the hard-coded path you set).
+ 
+ 3 - The pipeline writes transcripts and calls MFA to produce JSON alignment.
+ 
+ 4 - The analyzer expects phone entries to compute pause durations (silences ≥ configurable threshold).
+ 
+**If MFA isn’t installed, choose “no” when prompted for voice analysis.**
 
 ---
+### 🧩 Troubleshooting
 
-## How to Run
+**FFmpeg not found**
+```bash
+OSError: [Errno 2] No such file or directory: 'ffmpeg'
+```
+Install FFmpeg and ensure its bin is on PATH.
 
-1) Start the program
-    python og-Copy4.py
-   (or run the notebook cell containing the entry point)
+**Microphone / PortAudio errors**
+```bash
+sounddevice.PortAudioError: Error opening InputStream
+```
+Check OS mic permissions and that an input device exists.
+Install PortAudio (brew install portaudio or sudo apt-get install portaudio19-dev).
 
-2) Provide inputs (CLI prompts)
-- Job Title (required)
-- Job Description (optional)
-- Upload Resume? (yes/no → provide PDF path; text parsed via PyMuPDF)
-- Experience Level: Fresher / Fresher with Internship / Work Experience
-- Interview Type: choose a predefined type (Technical/Behavioral/etc.) or enter a custom type
-- Mode: live (one-shot Q&A) or recorded (answer-by-answer with re-record option)
-- Language: ml, en, or kn
+**TTS silent on Linux**
+```bash
+pyttsx3 did not speak
+```
+Install espeak / espeak-ng and try again.
 
-3) Recording
-- Choose timed recording (enter seconds) or manual stop (press ENTER to stop).
-- Listen back and re-record until satisfied; then confirm to keep the attempt.
+**CUDA/Torch mismatch**
+- Install the correct torch/torchaudio for your CUDA driver from https://pytorch.org.
+- For CPU-only, use the --index-url command shown in the install section.
 
-4) Automatic pipeline
-- Audio cleanup: noise reduction → dereverb (WPE) → band-pass → loudness normalization → (optional) DL enhancement
-- Language detection: Whisper (+ optional GPT verification)
-- Transcription: OpenAI (preserves fillers, hesitations, pauses)
-- Translation: if Malayalam/Kannada, translate to English via deep-translator
-- Model answer (optional): generate a reference answer
-- Answer comparison (optional): structured feedback vs. model answer
-- Voice analytics: WPM, filler ratio/count, hesitations; (optional) pauses from MFA JSON
+**MFA alignment fails / JSON missing**
+- Ensure `mfa` is on PATH or update the path the notebook uses.
+- Verify installed model names match what code references (e.g., `english_mfa`).
+- If unneeded, skip MFA by selecting “no” for voice analysis.
 
-5) Outputs
-- Console feedback + saved JSON history (questions, answers, metrics)
-- Temp WAV files for raw and cleaned audio
-
----
-
-## Troubleshooting
-- Microphone not found / permission errors → check OS mic permissions; ensure sounddevice lists an input device.
-- FFmpeg not found → install FFmpeg and add its bin folder to PATH.
-- pyttsx3 silent → on Linux, install espeak/espeak-ng; macOS uses NSSpeech; Windows uses SAPI5.
-- GPU not used → install a CUDA-enabled torch/torchaudio that matches the system GPU & drivers.
-- MFA JSON missing → run MFA alignment and point the analysis step to the generated JSON (phones + words tiers).
+**OpenAI authentication**
+```bash
+openai.AuthenticationError / No API key provided
+```
+Set `OPENAI_API_KEY` env var and ensure `client = OpenAI()` is used.
 
 ---
-
-## Security Note
-Avoid hardcoding API keys. Load from environment variables or a .env file and exclude secrets from version control.
+### 🔐 Security Note
+Do not hardcode API keys. Prefer environment variables or a `.env` file (excluded from version control).
+Remove temp WAV files and `history.json` after sessions if you do not want to keep local artifacts.
 
 ---
+### 📄 Sample requirements.txt
+```bash
+openai-whisper
+openai>=1.30.0
+sounddevice
+numpy
+scipy
+pyttsx3
+librosa
+pydub
+PyMuPDF
+deep-translator
+soundfile
+noisereduce
+pyloudnorm
+nara-wpe
+torch
+torchaudio
+hyperpyyaml
+ipython
+```
 
-## Sample requirements.txt
-    openai-whisper
-    openai>=1.30.0
-    sounddevice
-    numpy
-    scipy
-    pyttsx3
-    librosa
-    pydub
-    PyMuPDF
-    deep-translator
-    soundfile
-    noisereduce
-    pyloudnorm
