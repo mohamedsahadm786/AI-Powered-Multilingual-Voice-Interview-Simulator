@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audio Interview Trainer for RP2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* ============ Base / Layout ============ */
+    * { box-sizing: border-box; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
+    body { background: linear-gradient(135deg,#1e1a2b 0%,#58151c 100%); color: #f4f4f4; min-height: 100vh; display: flex; flex-direction: column; }
+    .hidden { display: none !important; }
+
+    /* Header / Nav */
+    .header { background: #ffffff; color: #333; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .brand { font-weight: 700; font-size: 1.1rem; color: #0a84ff; display: flex; gap: 10px; align-items: center; }
+    .brand img { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 18px; }
+    .nav-links a { color: #333; text-decoration: none; font-size: .95rem; }
+    .nav-links a:hover { color: #0a84ff; }
+    .logout-btn { background: #0a84ff; color: #fff; padding: 6px 14px; border: 0; border-radius: 6px; cursor: pointer; }
+
+    /* Hero */
+    .hero { padding: 40px 20px; text-align: center; background: linear-gradient(135deg,#00b4db 0%,#0083b0 100%); color: #fff; }
+    .hero h1 { font-size: 2rem; margin-bottom: 8px; }
+    .hero p { opacity: .9; }
+
+    /* Main Card (wider) */
+    .main { width: 100%; max-width: 1100px; margin: -40px auto 40px; background: rgba(23,21,39,.96); padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    h2.section-title { text-align: center; margin-bottom: 20px; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    label .req { color: #e0536e; margin-left: 6px; font-size: .85rem; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #34324f; background: #292743; color: #f4f4f4; }
+    textarea { min-height: 90px; resize: vertical; }
+
+    .radio-group { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+
+    /* Dropzone */
+    .drop { border: 2px dashed #44476a; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: .25s; position: relative; }
+    .drop:hover { border-color:#0a84ff; background: rgba(10,132,255,.12); }
+    .drop input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .muted { color:#c9c9c9; font-size:.9rem; }
+
+    /* Session buttons */
+    .session-buttons { display: flex; gap: 28px; justify-content: center; margin: 28px 0 10px; }
+    .session-btn { flex: 1; max-width: 230px; padding: 14px 18px; border-radius: 10px; border: 0; color: #fff; cursor: pointer; font-weight: 700; letter-spacing: .3px; transition:.2s; }
+    .session-btn.live { background:#0a84ff; }
+    .session-btn.recorded { background:#e0536e; }
+    .session-btn:hover { transform: translateY(-2px); }
+
+    /* Recorded language panel (appears after clicking "Recorded Interview") */
+    #recordedLangPanel { margin: 10px auto 0; max-width: 540px; background:#1e1a31; border-radius:10px; padding:14px; }
+    #recordedLangPanel .row { display:flex; gap:10px; align-items:center; }
+    #recordedLangPanel select { flex:1; }
+    #recordedLangPanel .btn { white-space: nowrap; }
+
+    /* Validation banner */
+    .banner { margin-bottom: 14px; border-radius: 8px; padding: 10px 12px; font-size: .95rem; }
+    .banner.error { background: #4a0c0c; color: #ffb7b7; border: 1px solid #7d1d1d; }
+
+    /* Live interview UI */
+    #liveArea { margin-top: 28px; border-top: 1px solid #44476a; padding-top: 20px; }
+    .question-box { background:#1e1a31; border-radius:10px; padding:18px; margin-bottom:16px; }
+    .question-box h3 { margin-bottom: 10px; }
+    .audio-toggle button { background: transparent; color:#0a84ff; border:0; cursor:pointer; font-size:1.05rem; }
+
+    /* Recording UI */
+    .waveform { display:none; height:42px; margin-top:8px; }
+    .waveform .bar { width:4px; height:100%; background:#0a84ff; margin-right:2px; display:inline-block; animation:bounce 1s infinite ease-in-out; }
+    .waveform .bar:nth-child(1){animation-delay:-.8s}.waveform .bar:nth-child(2){animation-delay:-.6s}.waveform .bar:nth-child(3){animation-delay:-.4s}.waveform .bar:nth-child(4){animation-delay:-.2s}.waveform .bar:nth-child(5){animation-delay:0s}
+    @keyframes bounce { 0%,100%{transform:scaleY(.3)} 50%{transform:scaleY(1)} }
+    .btn { background:#0a84ff; color:#fff; border:0; padding:9px 14px; border-radius:8px; cursor:pointer; }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+
+    /* Response flow */
+    .response-box { background:#1e1a31; border-radius:10px; padding:14px; margin-top:8px; }
+    .step { margin-top: 16px; }
+    .two-buttons { display:flex; gap:16px; margin-top:18px; }
+    .two-buttons .btn { flex: 1; }
+
+    /* Small helper */
+    .small { font-size:.9rem; opacity:.9; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <img src="https://i.imgur.com/HopEwPz.png" alt="AI" />
+      AI Interview Coach
+    </div>
+    <div class="nav-links">
+      <a href="#">Dashboard</a><a href="#">Practice</a><a href="#">History</a><a href="#">Profile</a>
+    </div>
+    <button class="logout-btn">Logout</button>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Interview Practice</h1>
+    <p>Practice with AI-powered feedback tailored to your job and experience</p>
+  </div>
+
+  <!-- Main Card -->
+  <div class="main">
+    <h2 class="section-title">Audio Interview Trainer </h2>
+
+    <div id="validateBanner" class="banner error hidden"></div>
+
+    <form id="setupForm">
+      <!-- Job Title -->
+      <div class="form-group">
+        <label for="jobTitle">Job Title <span class="req">*</span></label>
+        <input id="jobTitle" name="jobTitle" type="text" placeholder="Enter your job title" required />
+      </div>
+
+      <!-- Job Description -->
+      <div class="form-group">
+        <label for="jobDesc">Job Description <span class="small">(optional)</span></label>
+        <textarea id="jobDesc" name="jobDesc" placeholder="Enter job description..."></textarea>
+      </div>
+
+      <!-- Upload Resume? -->
+      <div class="form-group">
+        <label>Do you want to upload your resume?</label>
+        <div class="radio-group">
+          <label><input type="radio" name="resumeChoice" value="yes" required> Yes</label>
+          <label><input type="radio" name="resumeChoice" value="no"> No</label>
+        </div>
+      </div>
+
+      <!-- Dropzone -->
+      <div id="resumeDropWrap" class="form-group hidden">
+        <label>Upload Your CV</label>
+        <div id="dropArea" class="drop">
+          <p id="dropText" class="muted">Drag & drop your CV here or click to browse (PDF only, max 5MB)</p>
+          <input id="resumeFile" type="file" accept="application/pdf" />
+        </div>
+      </div>
+
+      <!-- Experience -->
+      <div class="form-group">
+        <label for="experienceLevel">Experience Level <span class="req">*</span></label>
+        <select id="experienceLevel" required>
+          <option value="" disabled selected>Select your experience</option>
+          <option value="1">1 - Fresher</option>
+          <option value="2">2 - Fresher with Internship</option>
+          <option value="3">3 - Work Experience</option>
+        </select>
+      </div>
+
+      <!-- Interview Type Method -->
+      <div class="form-group">
+        <label>How do you want to choose the interview type? <span class="req">*</span></label>
+        <div class="radio-group">
+          <label><input type="radio" name="typeMethod" value="manual" required> Enter manually</label>
+          <label><input type="radio" name="typeMethod" value="list"> Select from list</label>
+        </div>
+      </div>
+
+      <!-- Manual Type -->
+      <div id="manualWrap" class="form-group hidden">
+        <label for="manualType">Enter your interview type</label>
+        <input id="manualType" type="text" placeholder="e.g., Data Science Interview" />
+      </div>
+
+      <!-- List Type -->
+      <div id="listWrap" class="form-group hidden">
+        <label for="dropdownType">Select interview type</label>
+        <select id="dropdownType">
+          <option value="" disabled selected>Select an option</option>
+          <option value="1">1 - Behavioral Interview</option>
+          <option value="2">2 - Technical Interview</option>
+          <option value="3">3 - Situational Interview</option>
+          <option value="4">4 - Competency-Based Interview</option>
+          <option value="5">5 - Ethical or Integrity-Based Interview</option>
+        </select>
+      </div>
+
+      <!-- Session Buttons -->
+      <div class="session-buttons">
+        <button id="btnLive" type="button" class="session-btn live">Live Interview</button>
+        <button id="btnRecorded" type="button" class="session-btn recorded">Recorded Interview</button>
+      </div>
+
+      <!-- Appears only after clicking "Recorded Interview" -->
+      <div id="recordedLangPanel" class="hidden">
+        <div class="row">
+          <label for="recordLang" style="min-width:220px">Select language for recorded session</label>
+          <select id="recordLang">
+            <option value="" disabled selected>Select language</option>
+            <option value="en">English</option>
+            <option value="ml">Malayalam</option>
+            <option value="kn">Kannada</option>
+          </select>
+          <button id="btnStartRecorded" type="button" class="btn">Start Recorded Session</button>
+        </div>
+        <p class="small" style="margin-top:8px">This setting applies only to the recorded interview flow.</p>
+      </div>
+    </form>
+
+    <!-- Live / Recorded Interview Area -->
+    <div id="liveArea" class="hidden">
+      <!-- Question -->
+      <div class="question-box">
+        <h3 id="questionText">Question will appear here…</h3>
+        <div class="audio-toggle"><button id="btnPlayQ">🔊 Play</button></div>
+      </div>
+
+      <!-- Recording Step -->
+      <div id="recordStep">
+        <div class="form-group">
+          <label>How do you want to record your voice? <span class="req">*</span></label>
+          <div class="radio-group">
+            <label><input type="radio" name="recordMode" value="timed"> Set a time</label>
+            <label><input type="radio" name="recordMode" value="manual"> Manual (start/stop)</label>
+          </div>
+        </div>
+
+        <div id="timedWrap" class="form-group hidden">
+          <label for="recordSecs">Recording duration (seconds)</label>
+          <input id="recordSecs" type="number" min="1" placeholder="Enter seconds" />
+          <div style="margin-top:8px;">
+            <button id="btnStartTimed" class="btn">Start timed recording</button>
+          </div>
+        </div>
+
+        <div id="manualRecWrap" class="form-group hidden">
+          <button id="btnManualStart" class="btn">Start recording</button>
+          <button id="btnManualStop" class="btn" disabled>Stop recording</button>
+        </div>
+
+        <div id="waveform" class="waveform">
+          <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        </div>
+
+        <div id="mismatchBox"></div>
+
+        <!-- Recorded review panel -->
+        <div id="recordReview" class="response-box hidden">
+          <p><strong>Your recorded answer:</strong></p>
+          <audio id="recordReviewAudio" controls></audio>
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+            <button id="btnUseRecording" class="btn">Use this recording</button>
+            <button id="btnReRecord" class="btn">Re-record</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Flow -->
+      <div id="responseFlow" class="hidden">
+
+        <!-- Transcripts -->
+        <div id="stepTranscript" class="step hidden">
+          <div class="response-box">
+            <p><strong>Detected language:</strong> <span id="detectedLang"></span></p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+              <div>
+                <p><strong>Native Text</strong></p>
+                <div id="nativeText" class="small"></div>
+              </div>
+              <div>
+                <p><strong>English Translation</strong></p>
+                <div id="englishText" class="small"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hear response? -->
+        <div id="stepHear" class="step">
+          <label>Do you want to hear your recorded response?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="hearResponse" value="yes"> Yes</label>
+            <label><input type="radio" name="hearResponse" value="no"> No</label>
+          </div>
+          <div id="audioWrap" class="response-box hidden">
+            <p><strong>Your original recording:</strong></p>
+            <audio id="audioOrig" controls></audio>
+          </div>
+        </div>
+
+        <!-- AI feedback -->
+        <div id="stepAI" class="step hidden">
+          <label>Do you want real-time AI feedback on your answer?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="aiFeedback" value="yes"> Yes</label>
+            <label><input type="radio" name="aiFeedback" value="no"> No</label>
+          </div>
+          <div id="aiBox" class="response-box hidden"></div>
+        </div>
+
+        <!-- Voice analysis -->
+        <div id="stepVoice" class="step hidden">
+          <label>Do you want to see voice analysis (WPM, filler, score)?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="voiceAnalysis" value="yes"> Yes</label>
+            <label><input type="radio" name="voiceAnalysis" value="no"> No</label>
+          </div>
+          <div id="voiceBox" class="response-box hidden"></div>
+        </div>
+
+        <!-- Model answer -->
+        <div id="stepModel" class="step hidden">
+          <label>Do you want to see the model reference answer?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="modelAnswer" value="yes"> Yes</label>
+            <label><input type="radio" name="modelAnswer" value="no"> No</label>
+          </div>
+          <div id="modelBox" class="response-box hidden"></div>
+        </div>
+
+        <!-- Continue / Stop -->
+        <div id="contStop" class="two-buttons hidden">
+          <button id="btnContinue" class="btn">Continue</button>
+          <button id="btnStop" class="btn">Stop</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ----------------- Globals ----------------- */
+    let SESSION_ID = null;
+    let RESUME_SAVED_PATH = null;
+    let mediaRecorder = null, recordedChunks = [], recordTimeout = null;
+
+    let CURRENT_MODE = null;         // 'live' | 'recorded'
+    let SELECTED_LANGUAGE = null;    // language code for recorded mode
+
+    /* ----------------- Helpers ----------------- */
+    const $ = (id) => document.getElementById(id);
+    const show = (el, flag) => el.classList.toggle('hidden', !flag);
+    const banner = $('validateBanner');
+
+    function asText(v){
+      if (typeof v === 'string') return v;
+      if (v && typeof v === 'object'){
+        if ('text' in v && typeof v.text === 'string') return v.text;
+        if ('transcript' in v && typeof v.transcript === 'string') return v.transcript;
+        try { return JSON.stringify(v); } catch { return String(v); }
+      }
+      if (Array.isArray(v)) return v.map(asText).join(' ');
+      return v ?? '';
+    }
+
+    function showErrorBanner(messages) {
+      banner.textContent = Array.isArray(messages) ? messages.join('  •  ') : messages;
+      show(banner, true);
+      window.scrollTo({ top: banner.offsetTop - 20, behavior: 'smooth' });
+    }
+    function hideBanner() { show(banner, false); }
+
+    function requiredValidation() {
+      const errs = [];
+      if (!$('jobTitle').value.trim()) errs.push('Job Title is required');
+
+      const resumeChoice = document.querySelector('input[name="resumeChoice"]:checked');
+      if (!resumeChoice) errs.push('Please answer whether you want to upload your resume');
+      if (resumeChoice && resumeChoice.value === 'yes') {
+        const f = $('resumeFile');
+        if (!f.files || !f.files.length) errs.push('Resume PDF is required');
+      }
+
+      if (!$('experienceLevel').value) errs.push('Experience level is required');
+
+      const tm = document.querySelector('input[name="typeMethod"]:checked');
+      if (!tm) errs.push('Interview type selection method is required');
+      else if (tm.value === 'manual') {
+        if (!$('manualType').value.trim()) errs.push('Please enter your interview type');
+      } else {
+        if (!$('dropdownType').value) errs.push('Please select an interview type from list');
+      }
+      return errs;
+    }
+
+    /* ----------------- Field toggles ----------------- */
+    document.querySelectorAll('input[name="resumeChoice"]').forEach(r => {
+      r.addEventListener('change', () => {
+        show($('resumeDropWrap'), r.checked && r.value === 'yes');
+      });
+    });
+    document.querySelectorAll('input[name="typeMethod"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isManual = r.checked && r.value === 'manual';
+        show($('manualWrap'), isManual);
+        show($('listWrap'), !isManual);
+      });
+    });
+    const dropArea = $('dropArea'); const dropText = $('dropText'); const resumeFile = $('resumeFile');
+    ['dragenter','dragover'].forEach(n => dropArea.addEventListener(n, e => { e.preventDefault(); dropArea.style.borderColor='#0a84ff'; dropArea.style.background='rgba(10,132,255,.12)'; }));
+    ['dragleave','drop'].forEach(n => dropArea.addEventListener(n, e => { e.preventDefault(); dropArea.style.borderColor='#44476a'; dropArea.style.background='transparent'; }));
+    dropArea.addEventListener('drop', e => { const f=e.dataTransfer.files; if (f.length){ resumeFile.files=f; dropText.textContent=f[0].name; } });
+    resumeFile.addEventListener('change', () => { dropText.textContent = (resumeFile.files.length ? resumeFile.files[0].name : 'Drag & drop your CV here or click to browse (PDF only, max 5MB)'); });
+
+    /* ----------------- Start Live / Recorded ----------------- */
+    $('btnLive').addEventListener('click', async () => {
+      hideBanner();
+      const errs = requiredValidation();
+      if (errs.length) { showErrorBanner(errs); return; }
+
+      CURRENT_MODE = 'live';
+      show($('recordedLangPanel'), false); // hide recorded-only panel if open
+
+      const fd = new FormData();
+      fd.append('jobTitle', $('jobTitle').value.trim());
+      fd.append('jobDesc', $('jobDesc').value.trim());
+      const resumeChoice = document.querySelector('input[name="resumeChoice"]:checked').value;
+      fd.append('resumeChoice', resumeChoice);
+      if (resumeChoice === 'yes' && resumeFile.files.length) fd.append('resumeFile', resumeFile.files[0]);
+      fd.append('experienceLevel', $('experienceLevel').value);
+      const tm = document.querySelector('input[name="typeMethod"]:checked').value;
+      fd.append('typeMethod', tm);
+      if (tm === 'manual') fd.append('manualType', $('manualType').value.trim());
+      else fd.append('dropdownType', $('dropdownType').value);
+
+      try {
+        const res = await fetch('/start_interview', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.ok) { showErrorBanner(data.error || 'Failed to start interview'); return; }
+        SESSION_ID = data.session_id;
+        $('questionText').textContent = data.question || 'Question unavailable';
+        show($('liveArea'), true);
+        resetRecordingUI();
+        resetResponseFlow();
+        window.scrollTo({ top: $('liveArea').offsetTop - 20, behavior: 'smooth' });
+      } catch {
+        showErrorBanner('Network error while starting interview');
+      }
+    });
+
+    // Clicking "Recorded Interview" only reveals the language panel
+    $('btnRecorded').addEventListener('click', () => {
+      hideBanner();
+      const errs = requiredValidation();
+      if (errs.length) { showErrorBanner(errs); return; }
+      CURRENT_MODE = 'recorded';
+      show($('recordedLangPanel'), true);
+      $('recordLang').focus();
+      window.scrollTo({ top: $('recordedLangPanel').offsetTop - 20, behavior: 'smooth' });
+    });
+
+    // Start recorded session after language is chosen
+    $('btnStartRecorded').addEventListener('click', () => {
+      const lang = $('recordLang').value;
+      if (!lang) { showErrorBanner('Please select a language for the recorded session.'); return; }
+
+      const fd = new FormData();
+      fd.append('jobTitle', $('jobTitle').value.trim());
+      fd.append('jobDesc', $('jobDesc').value.trim());
+      const resumeChoice = document.querySelector('input[name="resumeChoice"]:checked').value;
+      fd.append('resumeChoice', resumeChoice);
+      if (resumeChoice === 'yes' && resumeFile.files.length) fd.append('resumeFile', resumeFile.files[0]);
+      fd.append('experienceLevel', $('experienceLevel').value);
+      const tm = document.querySelector('input[name="typeMethod"]:checked').value;
+      fd.append('typeMethod', tm);
+      if (tm === 'manual') fd.append('manualType', $('manualType').value.trim());
+      else fd.append('dropdownType', $('dropdownType').value);
+
+      fd.append('languageChoice', lang);
+      SELECTED_LANGUAGE = lang;
+
+      fetch('/start_recorded_interview', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) { showErrorBanner(data.error || 'Failed to start recorded interview'); return; }
+          SESSION_ID = data.session_id;
+          $('questionText').textContent = data.question || 'Question unavailable';
+          show($('liveArea'), true);
+          show($('recordedLangPanel'), false);
+          resetRecordingUI();
+          resetResponseFlow();
+          window.scrollTo({ top: $('liveArea').offsetTop - 20, behavior: 'smooth' });
+        })
+        .catch(() => showErrorBanner('Network error while starting recorded interview'));
+    });
+
+    /* ----------------- Play question as audio ----------------- */
+    $('btnPlayQ').addEventListener('click', () => {
+      const u = new SpeechSynthesisUtterance($('questionText').textContent);
+      u.lang = 'en-US';
+      speechSynthesis.speak(u);
+    });
+
+    /* ----------------- Recording controls ----------------- */
+    document.querySelectorAll('input[name="recordMode"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isTimed = r.value === 'timed' && r.checked;
+        show($('timedWrap'), isTimed);
+        show($('manualRecWrap'), !isTimed);
+      });
+    });
+
+    $('btnStartTimed').addEventListener('click', async () => {
+      const secs = parseInt($('recordSecs').value, 10);
+      if (!secs || secs <= 0) { showErrorBanner('Please enter a valid number of seconds.'); return; }
+      await beginRecording();
+      recordTimeout = setTimeout(() => { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }, secs * 1000);
+    });
+    $('btnManualStart').addEventListener('click', beginRecording);
+    $('btnManualStop').addEventListener('click', () => { if (mediaRecorder && mediaRecorder.state !== 'inactive') { clearTimeout(recordTimeout); mediaRecorder.stop(); } });
+
+    async function beginRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          $('waveform').style.display = 'none';
+          $('btnManualStart').disabled = false;
+          $('btnManualStop').disabled = true;
+          handleRecordingStop();
+        };
+        mediaRecorder.start();
+        $('waveform').style.display = 'block';
+        $('btnManualStart').disabled = true;
+        $('btnManualStop').disabled = false;
+      } catch {
+        showErrorBanner('Microphone access denied or not available.');
+      }
+    }
+
+    async function handleRecordingStop() {
+      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+
+      if (CURRENT_MODE === 'recorded') {
+        // show review panel (no blocking confirm)
+        showRecordedReview(blob);
+        return;
+      }
+
+      // Live mode: send immediately (existing flow)
+      try {
+        const fd = new FormData();
+        fd.append('session_id', SESSION_ID || '');
+        fd.append('audio', blob, 'answer.webm');
+        const res = await fetch('/process_answer', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.ok) { showErrorBanner(data.error || 'Failed to process answer'); return; }
+
+        $('mismatchBox').innerHTML = '';
+        if (data.mismatch) {
+          const manualUI = data.manualLanguageNeeded ? `
+            <div style="margin-top:10px">
+              <label><input type="radio" name="mlang" value="ml"> Malayalam</label>
+              <label><input type="radio" name="mlang" value="en"> English</label>
+              <label><input type="radio" name="mlang" value="kn"> Kannada</label>
+              <button id="btnChooseLang" class="btn" style="margin-left:10px">Choose manually</button>
+            </div>` : '';
+          $('mismatchBox').innerHTML = `<div class="banner error">${data.mismatchMessage || 'Language mismatch. Please re-record.'}</div>${manualUI}`;
+
+          if (data.manualLanguageNeeded) {
+            $('btnChooseLang').onclick = async () => {
+              const lang = [...document.querySelectorAll('input[name="mlang"]')].find(x=>x.checked)?.value;
+              if (!lang) { showErrorBanner('Please select a language.'); return; }
+              const r = await fetch('/manual_language', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ session_id: SESSION_ID, language: lang })
+              });
+              const dj = await r.json();
+              if (!dj.ok) { showErrorBanner(dj.error || 'Failed to apply language.'); return; }
+              $('mismatchBox').innerHTML = '';
+              renderPostProcess(dj, blob);
+            };
+          } else {
+            resetRecordingUI();
+          }
+          return;
+        }
+
+        renderPostProcess(data, blob);
+
+      } catch {
+        showErrorBanner('Network error while sending audio.');
+      }
+    }
+
+    function renderPostProcess(data, blob) {
+      resetResponseFlow();
+      $('responseFlow').classList.remove('hidden');
+
+      if (data.detectedLang || data.nativeText || data.englishText) {
+        $('detectedLang').textContent = data.detectedLang || '';
+        $('nativeText').textContent   = asText(data.nativeText);
+        $('englishText').textContent  = asText(data.englishText);
+        $('stepTranscript').classList.remove('hidden');
+      }
+
+      const origUrl = URL.createObjectURL(blob);
+      $('audioOrig').src = origUrl;
+
+      document.getElementsByName('hearResponse').forEach(r => r.onchange = () => {
+        const showAudio = r.checked && r.value === 'yes';
+        show($('audioWrap'), showAudio);
+        $('stepAI').classList.remove('hidden');
+        scrollToFlow();
+      });
+
+      document.getElementsByName('aiFeedback').forEach(r => r.onchange = async () => {
+        const yes = r.checked && r.value === 'yes';
+        if (yes) {
+          try {
+            const res = await fetch('/ai_feedback', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: SESSION_ID })
+            });
+            const x = await res.json();
+            if (!x.ok) { showErrorBanner(x.error || 'AI feedback generation failed.'); return; }
+            $('aiBox').textContent = x.aiFeedback || '(no feedback)';
+          } catch { showErrorBanner('Network error while generating AI feedback.'); }
+        }
+        show($('aiBox'), yes);
+        $('stepVoice').classList.remove('hidden');
+        scrollToFlow();
+      });
+
+      document.getElementsByName('voiceAnalysis').forEach(r => r.onchange = async () => {
+        const yes = r.checked && r.value === 'yes';
+        if (yes) {
+          try{
+            const res = await fetch('/voice_analysis', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: SESSION_ID })
+            });
+            const x = await res.json();
+            if (!x.ok) { showErrorBanner(x.error || 'Voice analysis failed.'); return; }
+            const a = x.voiceAnalysis || {};
+            $('voiceBox').innerHTML =
+              `<p><strong>Speaking Rate:</strong> ${Number(a.wpm||0).toFixed(2)} WPM</p>` +
+              `<p><strong>Filler Ratio:</strong> ${Number((a.fillerRatio||0)*100).toFixed(2)}%</p>` +
+              `<p><strong>Score:</strong> ${a.score ?? '-'}</p>` +
+              `<p><strong>Pauses:</strong> ${a.pauseCount ?? 0}</p>`;
+          }catch{ showErrorBanner('Network error while running voice analysis.'); }
+        }
+        show($('voiceBox'), yes);
+        $('stepModel').classList.remove('hidden');
+        scrollToFlow();
+      });
+
+      document.getElementsByName('modelAnswer').forEach(r => r.onchange = async () => {
+        const yes = r.checked && r.value === 'yes';
+        if (yes) {
+          try {
+            const res = await fetch('/model_answer', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: SESSION_ID })
+            });
+            const x = await res.json();
+            if (!x.ok) { showErrorBanner(x.error || 'Model answer generation failed.'); return; }
+            $('modelBox').textContent = x.modelAnswer || '(no model answer)';
+          } catch { showErrorBanner('Network error while generating model answer.'); }
+        }
+        show($('modelBox'), yes);
+        $('contStop').classList.remove('hidden');
+        scrollToFlow();
+      });
+
+      $('btnContinue').onclick = async () => {
+        try {
+          const res = await fetch('/next_question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID })
+          });
+          const nd = await res.json();
+          if (!nd.ok) { showErrorBanner(nd.error || 'Failed to get next question'); return; }
+          $('questionText').textContent = nd.question || 'Question unavailable';
+          resetRecordingUI();
+          resetResponseFlow();
+          window.scrollTo({ top: $('liveArea').offsetTop - 20, behavior: 'smooth' });
+        } catch {
+          showErrorBanner('Network error while fetching next question.');
+        }
+      };
+      $('btnStop').onclick = () => { alert('Interview ended. Thank you!'); $('liveArea').classList.add('hidden'); };
+    }
+
+    function showRecordedReview(blob) {
+      const url = URL.createObjectURL(blob);
+      $('recordReviewAudio').src = url;
+      show($('recordReview'), true);
+      $('btnUseRecording').onclick = async () => {
+        show($('recordReview'), false);
+        try {
+          const fd = new FormData();
+          fd.append('session_id', SESSION_ID || '');
+          fd.append('audio', blob, 'answer.webm');
+          const res = await fetch('/process_recorded_answer', { method: 'POST', body: fd });
+          const data = await res.json();
+          if (!data.ok) { showErrorBanner(data.error || 'Failed to process recorded answer'); return; }
+          $('mismatchBox').innerHTML = '';
+          renderPostProcess(data, blob);
+        } catch { showErrorBanner('Network error while sending recorded audio.'); }
+      };
+      $('btnReRecord').onclick = () => {
+        show($('recordReview'), false);
+        resetRecordingUI();
+      };
+    }
+
+    function resetRecordingUI() {
+      $('waveform').style.display = 'none';
+      $('btnManualStart').disabled = false;
+      $('btnManualStop').disabled = true;
+      document.querySelectorAll('input[name="recordMode"]').forEach(x => { x.checked = false; });
+      show($('timedWrap'), false);
+      show($('manualRecWrap'), false);
+      show($('recordReview'), false);
+    }
+
+    function resetResponseFlow() {
+      const rf = $('responseFlow');
+      if (rf) rf.classList.add('hidden');
+      $('stepTranscript').classList.add('hidden');
+      $('stepAI').classList.add('hidden');
+      $('stepVoice').classList.add('hidden');
+      $('stepModel').classList.add('hidden');
+      $('contStop').classList.add('hidden');
+      $('detectedLang').textContent = '';
+      $('nativeText').textContent   = '';
+      $('englishText').textContent  = '';
+      $('audioWrap').classList.add('hidden');
+      $('audioOrig').src = '';
+      $('aiBox').classList.add('hidden');
+      $('aiBox').textContent = '';
+      $('voiceBox').classList.add('hidden');
+      $('voiceBox').innerHTML = '';
+      $('modelBox').classList.add('hidden');
+      $('modelBox').textContent = '';
+      ['hearResponse','aiFeedback','voiceAnalysis','modelAnswer'].forEach(name => {
+        document.getElementsByName(name).forEach(r => { r.checked = false; });
+      });
+    }
+
+    function scrollToFlow() {
+      const el = $('responseFlow');
+      if (el) window.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>
